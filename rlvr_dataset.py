@@ -8,8 +8,8 @@ from omegaconf import DictConfig, OmegaConf
 from transformers import PreTrainedTokenizer, ProcessorMixin
 
 from verl.utils.dataset.rl_dataset import RLHFDataset
-from xpoints.datasets.mm_utils import extract_vision_info, fetch_image, fetch_video
-from xpoints.datasets.sharegpt_utils import ShareGPTMessageDataset, build_config
+from .mm_utils import extract_vision_info, fetch_image, fetch_video
+from .sharegpt_utils import ShareGPTMessageDataset, build_config
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +181,14 @@ class RLVRShareGPTDataset(RLHFDataset):
         sample_index = self._resolve_sample_index(item)
         parsed = self.base_dataset[sample_index]
         row_dict: dict[str, Any] = dataclasses.asdict(parsed)
+
+        # Lift agent_name only (not arbitrary pass_through keys) so verl's
+        # DataProto exposes it on non_tensor_batch for AgentLoopWorker dispatch.
+        # Broad lifting is unsafe: unknown keys can mismatch batch shape across
+        # samples or collide with framework fields.
+        pass_through = row_dict.pop("pass_through", None) or {}
+        if "agent_name" in pass_through:
+            row_dict.setdefault("agent_name", pass_through["agent_name"])
 
         row_dict["raw_prompt"] = row_dict["messages"]
         row_dict["dummy_tensor"] = torch.tensor([0], dtype=torch.uint8)
