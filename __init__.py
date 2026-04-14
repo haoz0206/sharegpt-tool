@@ -2,8 +2,10 @@ from .sharegpt_utils import ShareGPTDatasetConfig, ShareGPTMessageDataset, Share
 
 try:
     from .rlvr_dataset import RLVRShareGPTDataset, build_config
+    from .agent_dataset import AgentShareGPTDataset
 except Exception:  # pragma: no cover - optional runtime dependency (verl/ray)
     RLVRShareGPTDataset = None
+    AgentShareGPTDataset = None
     build_config = None
 
 __all__ = [
@@ -19,5 +21,6 @@ if build_config is not None and RLVRShareGPTDataset is not None:
         [
             "build_config",
             "RLVRShareGPTDataset",
+            "AgentShareGPTDataset",
         ]
     )

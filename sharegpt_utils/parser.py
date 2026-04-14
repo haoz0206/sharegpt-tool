@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from .config import ShareGPTDatasetConfig
+from .reference import resolve_references_in_obj
 
 logger = logging.getLogger(__name__)
 
-_MEDIA_TOKEN_PATTERN = re.compile(r"(<image>|<video>|<audio>)")
+_MEDIA_TOKEN_PATTERN = re.compile(r"(<@(?:image|video|audio):\d+>|<image>|<video>|<audio>)")
+_INDEXED_TOKEN_PATTERN = re.compile(r"<@(image|video|audio):(\d+)>")
 _TOKEN_TO_MEDIA_TYPE = {
     "<image>": "image",
     "<video>": "video",
@@ -73,26 +75,48 @@ def _normalize_media_refs(raw_media: Any, strict: bool, media_name: str) -> list
 class _MediaPool:
     _items: dict[str, list[Any]]
     _offsets: dict[str, int]
+    _referenced: dict[str, set[int]]
 
     @classmethod
     def create(cls, images: list[Any], videos: list[Any], audios: list[Any]) -> _MediaPool:
         return cls(
             _items={"image": images, "video": videos, "audio": audios},
             _offsets={"image": 0, "video": 0, "audio": 0},
+            _referenced={"image": set(), "video": set(), "audio": set()},
         )
 
     def consume(self, media_type: str) -> Any | None:
-        """Consume the next media item of the requested type in order."""
+        """Consume the next not-yet-used media item of the requested type.
+
+        Skips indices already claimed by ``<@kind:N>`` references so legacy
+        ``<image>`` tokens and indexed references can coexist in one sample
+        without double-counting.
+        """
         items = self._items[media_type]
+        referenced = self._referenced[media_type]
         offset = self._offsets[media_type]
+        while offset < len(items) and offset in referenced:
+            offset += 1
         if offset >= len(items):
+            self._offsets[media_type] = offset
             return None
         self._offsets[media_type] = offset + 1
         return items[offset]
 
+    def mark_referenced(self, media_type: str, index: int) -> None:
+        """Flag that a ``<@kind:N>`` reference claimed this index (no offset move)."""
+        self._referenced[media_type].add(index)
+
     def remaining(self, media_type: str) -> list[Any]:
-        """Return the not-yet-consumed media items of a given type."""
-        return self._items[media_type][self._offsets[media_type]:]
+        """Return items neither consumed in order nor claimed by reference."""
+        items = self._items[media_type]
+        offset = self._offsets[media_type]
+        referenced = self._referenced[media_type]
+        return [items[i] for i in range(offset, len(items)) if i not in referenced]
+
+    def as_lookup(self) -> dict[str, list[Any]]:
+        """Return the full pool for random-access reference resolution."""
+        return self._items
 
     def mark_all_consumed(self) -> None:
         """Mark all media items as consumed after fallback injection."""
@@ -102,9 +126,8 @@ class _MediaPool:
     def assert_all_consumed(self) -> None:
         """Raise when strict media matching leaves unused top-level media refs."""
         for media_type in MEDIA_TYPES:
-            remaining = len(self._items[media_type]) - self._offsets[media_type]
-            if remaining:
-                raise ValueError(f"Unused {media_type}s remain: {remaining}")
+            if self.remaining(media_type):
+                raise ValueError(f"Unused {media_type}s remain: {len(self.remaining(media_type))}")
 
 
 class ShareGPTParser:
@@ -166,10 +189,34 @@ class ShareGPTParser:
         return {"type": media_type, media_type: value}
 
     def _parse_text_content(self, content: str, media_pool: _MediaPool) -> list[dict[str, Any]]:
-        """Parse string content into a uniform list of text/media content blocks."""
+        """Parse string content into a uniform list of text/media content blocks.
+
+        Handles two token forms in prompt text:
+          * Legacy ``<image>`` / ``<video>`` / ``<audio>`` — consume the pool in order.
+          * Indexed ``<@image:N>`` / ``<@video:N>`` / ``<@audio:N>`` — random-access
+            the pool by index without consuming. Does not advance offsets, so
+            legacy tokens intermixed in the same message still see the full pool.
+        Both emit a structured media content block, not inline text.
+        """
         content_list: list[dict[str, Any]] = []
 
         for segment in [seg for seg in _MEDIA_TOKEN_PATTERN.split(content) if seg != ""]:
+            indexed = _INDEXED_TOKEN_PATTERN.fullmatch(segment)
+            if indexed is not None:
+                media_type = indexed.group(1)
+                index = int(indexed.group(2))
+                pool_items = media_pool.as_lookup().get(media_type, [])
+                if 0 <= index < len(pool_items):
+                    media_pool.mark_referenced(media_type, index)
+                    content_list.append(self._build_media_item(media_type, pool_items[index]))
+                    continue
+                if self.config.strict_references:
+                    raise ValueError(
+                        f"Unresolvable reference {segment}: {media_type} pool has {len(pool_items)} item(s)."
+                    )
+                content_list.append(self._build_text_item(segment))
+                continue
+
             media_type = _TOKEN_TO_MEDIA_TYPE.get(segment)
             if media_type is None:
                 content_list.append(self._build_text_item(segment))
@@ -246,7 +293,11 @@ class ShareGPTParser:
             return blocks
         return [self._build_text_item(content)]
 
-    def _parse_messages(self, raw_sample: dict[str, Any]) -> list[dict[str, Any]]:
+    def _parse_messages(
+        self,
+        raw_sample: dict[str, Any],
+        media_pool: _MediaPool,
+    ) -> list[dict[str, Any]]:
         """Normalize raw ShareGPT conversations into canonical role/content messages."""
         raw_messages = raw_sample.get(self.config.messages_key, [])
         if not isinstance(raw_messages, list):
@@ -255,7 +306,6 @@ class ShareGPTParser:
             return []
 
         source_file = raw_sample.get(self.config.source_file_key)
-        media_pool = self._build_media_pool(raw_sample)
         messages: list[dict[str, Any]] = []
 
         for i, message in enumerate(raw_messages):
@@ -376,14 +426,32 @@ class ShareGPTParser:
             raise ValueError(f"Invalid '{self.config.data_source_key}' in sample id={sample_id}: {data_source}")
         return data_source
 
-    def _normalize_extra_info(self, raw_sample: dict[str, Any], index: int) -> dict[str, Any]:
-        """Normalize ``extra_info`` and guarantee a stable dataset index field."""
+    def _normalize_extra_info(
+        self,
+        raw_sample: dict[str, Any],
+        index: int,
+        media_pool: _MediaPool,
+    ) -> dict[str, Any]:
+        """Normalize ``extra_info``, stamp a dataset index, and optionally resolve refs.
+
+        When ``resolve_extra_info_references`` is set (agent-style datasets),
+        deep-walk the dict and substitute ``<@kind:N>`` leaves against the
+        already-built media pool. Off by default for the prompt-only hot path.
+        """
         extra_info = raw_sample.get("extra_info")
         if not isinstance(extra_info, dict):
             extra_info = {}
         else:
             extra_info = dict(extra_info)
         extra_info.setdefault("index", index)
+        if self.config.resolve_extra_info_references:
+            extra_info = resolve_references_in_obj(
+                extra_info,
+                media_pool.as_lookup(),
+                strict=self.config.strict_references,
+                path="$.extra_info",
+                on_reference=media_pool.mark_referenced,
+            )
         return extra_info
 
     def _allowed_top_level_keys(self) -> set[str]:
@@ -448,8 +516,12 @@ class ShareGPTParser:
         """
         sample_id = raw_sample.get(self.config.id_key, index)
         self._warn_on_dropped_top_level_keys(raw_sample, sample_id)
-        messages = self._parse_messages(raw_sample)
+        media_pool = self._build_media_pool(raw_sample)
+        # Walk extra_info first so any <@kind:N> references there mark pool
+        # indices before _parse_messages runs _inject_remaining_media; without
+        # this, a referenced image would also get auto-prepended to the prompt.
+        extra_info = self._normalize_extra_info(raw_sample, index, media_pool)
+        messages = self._parse_messages(raw_sample, media_pool)
         ground_truth, messages = self._derive_ground_truth(raw_sample, messages)
         data_source = self._resolve_data_source(raw_sample, sample_id)
-        extra_info = self._normalize_extra_info(raw_sample, index)
         return self._build_parsed_sample(raw_sample, sample_id, messages, ground_truth, data_source, extra_info)

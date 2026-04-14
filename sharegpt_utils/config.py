@@ -40,6 +40,14 @@ class ShareGPTDatasetConfig:
     strict_audio_type_check: bool = False
     strict_media_token_match: bool = False
 
+    # Indexed media reference behavior (<@image:N> / <@video:N> / <@audio:N>):
+    # references in prompt text are always resolved (cheap, no collision with
+    # legacy <image> tokens). Traversal of extra_info is opt-in because the
+    # hot path in prompt-only datasets shouldn't pay for a deep walk it never
+    # needs. AgentShareGPTDataset flips the walk flag on.
+    resolve_extra_info_references: bool = False
+    strict_references: bool = True
+
     pass_through_keys: list[str] = field(default_factory=list)
     tags: ShareGPTTagConfig = field(default_factory=ShareGPTTagConfig)
 
