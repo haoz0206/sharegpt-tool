@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 from transformers import PreTrainedTokenizer, ProcessorMixin
 
 from .rlvr_dataset import RLVRShareGPTDataset
@@ -56,8 +56,17 @@ class AgentShareGPTDataset(RLVRShareGPTDataset):
         # Inject the walk flag into the sharegpt sub-config so that
         # RLVRShareGPTDataset.__init__ picks it up when it calls build_config.
         # OmegaConf.merge returns a new config; the caller's object is untouched.
+        #
+        # Hydra CLI overrides like `+data.sharegpt.pass_through_keys=...` create
+        # the sharegpt node in struct mode, so a plain merge would fail with
+        # ConfigKeyError on the new `resolve_extra_info_references` key. Open
+        # struct for the duration of the merge; the context manager restores
+        # struct on `config` afterwards (the returned `merged_config` is a
+        # deep-copied new object and keeps struct=False, which is fine since
+        # RLVRShareGPTDataset only reads it via OmegaConf.to_container).
         override = OmegaConf.create({"sharegpt": {"resolve_extra_info_references": True}})
-        merged_config = OmegaConf.merge(config, override)
+        with open_dict(config):
+            merged_config = OmegaConf.merge(config, override)
         super().__init__(
             data_files=data_files,
             tokenizer=tokenizer,
