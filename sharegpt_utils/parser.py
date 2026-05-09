@@ -21,6 +21,7 @@ _TOKEN_TO_MEDIA_TYPE = {
 }
 _MISSING = object()
 MEDIA_TYPES = ("image", "video", "audio")
+_WARNED_DROPPED_TOP_LEVEL_KEY_SETS: set[tuple[str, ...]] = set()
 
 
 @dataclass
@@ -475,8 +476,12 @@ class ShareGPTParser:
         dropped_keys = sorted(set(raw_sample) - self._allowed_top_level_keys())
         if not dropped_keys:
             return
+        dropped_key_set = tuple(dropped_keys)
+        if dropped_key_set in _WARNED_DROPPED_TOP_LEVEL_KEY_SETS:
+            return
+        _WARNED_DROPPED_TOP_LEVEL_KEY_SETS.add(dropped_key_set)
         logger.warning(
-            "Dropping unexpected top-level keys for sample id=%s: %s. Move task metadata under 'extra_info' or add keys to pass_through_keys.",
+            "Dropping unexpected top-level keys for sample id=%s: %s. This warning is emitted once per dropped-key set. Move task metadata under 'extra_info' or add keys to pass_through_keys.",
             sample_id,
             dropped_keys,
         )

@@ -11,6 +11,7 @@ from xpoints.datasets.sharegpt_utils import (
     ShareGPTParser,
     build_config,
 )
+from xpoints.datasets.sharegpt_utils import parser as parser_module
 from xpoints.datasets.sharegpt_utils.io import load_sharegpt_json
 
 
@@ -163,6 +164,7 @@ class ShareGPTUtilsTest(unittest.TestCase):
         self.assertNotIn("answer_type", parsed.pass_through)
 
     def test_sharegpt_parser_warns_when_dropping_unexpected_top_level_keys(self):
+        parser_module._WARNED_DROPPED_TOP_LEVEL_KEY_SETS.clear()
         parser = ShareGPTParser(ShareGPTDatasetConfig())
         raw_sample = {
             "id": "sample-drop",
@@ -179,6 +181,28 @@ class ShareGPTUtilsTest(unittest.TestCase):
         self.assertEqual(parsed.extra_info, {"index": 0})
         self.assertTrue(any("Dropping unexpected top-level keys" in log for log in logs.output))
         self.assertTrue(any("overlap" in log and "source" in log for log in logs.output))
+
+    def test_sharegpt_parser_warns_once_per_dropped_top_level_key_set(self):
+        parser_module._WARNED_DROPPED_TOP_LEVEL_KEY_SETS.clear()
+        parser = ShareGPTParser(ShareGPTDatasetConfig())
+        raw_sample = {
+            "id": "sample-drop",
+            "data_source": "demo",
+            "ground_truth": {"label": 1},
+            "agent_name": "description_agent",
+            "conversations": [{"from": "human", "value": "hello"}],
+        }
+
+        with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+            parser.parse_sample(raw_sample, 0)
+        self.assertEqual(sum("Dropping unexpected top-level keys" in log for log in logs.output), 1)
+
+        with self.assertNoLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING"):
+            parser.parse_sample({**raw_sample, "id": "sample-drop-2"}, 1)
+
+        with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+            parser.parse_sample({**raw_sample, "id": "sample-drop-3", "source": "sa1b"}, 2)
+        self.assertTrue(any("agent_name" in log and "source" in log for log in logs.output))
 
     def test_sharegpt_parser_keeps_explicit_pass_through_keys(self):
         parser = ShareGPTParser(
