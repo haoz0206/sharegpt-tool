@@ -1,16 +1,19 @@
 import importlib
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 try:
     import orjson
 
     _loads = orjson.loads
-    print("[sharegpt_utils.io] Using orjson for JSON parsing.")
+    logger.debug("Using orjson for JSON parsing.")
 except ModuleNotFoundError:
     _loads = json.loads
-    print("[sharegpt_utils.io] orjson not found, falling back to stdlib json.")
+    logger.debug("orjson not found, falling back to stdlib json.")
 
 
 def load_sharegpt_json(path: Path) -> list[dict[str, Any]]:

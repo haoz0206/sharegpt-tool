@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import traceback
 from typing import Any, Optional
 
 import torch
@@ -87,7 +86,7 @@ class RLVRShareGPTDataset(RLHFDataset):
     def _read_files_and_tokenize(self):
         self.base_dataset = ShareGPTMessageDataset(self.data_files, config=self.sharegpt_config)
         total = len(self.base_dataset)
-        print(f"dataset len: {total}")
+        logger.info("dataset len: %d", total)
 
         self.sample_indices: list[int] | None = None
         if self.max_samples > 0 and self.max_samples < total:
@@ -99,7 +98,7 @@ class RLVRShareGPTDataset(RLHFDataset):
                 self.sample_indices = rng.choice(total, size=self.max_samples, replace=False).tolist()
             else:
                 self.sample_indices = list(range(self.max_samples))
-            print(f"selected {self.max_samples} random samples out of {total}")
+            logger.info("selected %d random samples out of %d", self.max_samples, total)
 
         if self.filter_overlong_prompts:
             logger.warning("Ignoring data.filter_overlong_prompts for ShareGPTRawPromptDataset to keep lazy loading.")
@@ -143,12 +142,11 @@ class RLVRShareGPTDataset(RLHFDataset):
 
                 return len(tokenizer.encode(raw_prompt, add_special_tokens=False))
             except Exception:
-                print("Error processing one of the samples, skipping...")
-                traceback.print_exc()
+                logger.exception("Error processing one of the samples, skipping.")
                 return self.max_prompt_length + 1
 
         filtered = [doc for doc in dataframe if doc2len(doc) <= self.max_prompt_length]
-        print(f"filter dataset len: {len(filtered)}")
+        logger.info("filter dataset len: %d", len(filtered))
         return filtered
 
     def __len__(self):
