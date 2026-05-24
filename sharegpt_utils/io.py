@@ -34,17 +34,24 @@ def load_sharegpt_json(path: Path) -> list[dict[str, Any]]:
 
 def load_sharegpt_jsonl(path: Path) -> list[dict[str, Any]]:
     """Load ShareGPT rows from a JSONL file containing one object per line."""
-    rows: list[dict[str, Any]] = []
+    return list(iter_sharegpt_jsonl_rows(path))
+
+
+def iter_sharegpt_jsonl_rows(path: Path, stop: int | None = None):
+    """Yield JSON object rows from a JSONL file."""
     with path.open("r", encoding="utf-8") as f:
+        row_index = 0
         for line_num, line in enumerate(f, start=1):
             text = line.strip()
             if not text:
                 continue
+            if stop is not None and row_index >= stop:
+                break
             obj = _loads(text)
             if not isinstance(obj, dict):
                 raise TypeError(f"Line {line_num} in {path} is not a JSON object of type dict, got {type(obj).__name__}")
-            rows.append(obj)
-    return rows
+            row_index += 1
+            yield obj
 
 
 def load_sharegpt_parquet(path: Path) -> list[dict[str, Any]]:
