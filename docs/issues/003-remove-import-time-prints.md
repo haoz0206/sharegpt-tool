@@ -1,6 +1,6 @@
 # 003 Remove Import-Time Prints
 
-Status: in_progress
+Status: done
 
 ## Problem
 

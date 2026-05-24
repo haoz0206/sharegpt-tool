@@ -1,6 +1,6 @@
 # 002 Stream Sliced JSONL Loader
 
-Status: in_progress
+Status: done
 
 ## Problem
 

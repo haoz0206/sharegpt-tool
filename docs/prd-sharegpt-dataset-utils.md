@@ -7,12 +7,8 @@ with a small framework-agnostic core and explicit runtime adapters.
 
 ## Current Problems
 
-- Root package exports optional verl adapters through a broad exception guard,
-  which can hide real adapter bugs as missing optional dependencies.
-- JSONL slice specs such as `file.jsonl@[0:512]` are parsed correctly, but the
-  current loader reads the entire file before slicing.
-- JSON backend selection prints during import, which is noisy in distributed
-  training workers.
+- Root package boundaries, bounded JSONL slice loading, and import-time logging
+  side effects have been cleaned up.
 - `ShareGPTParser` owns several responsibilities and should eventually be
   split, but that refactor is intentionally out of scope for the current pass.
 
