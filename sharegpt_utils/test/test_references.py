@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from point_cycle.datasets.sharegpt_utils import ShareGPTParser, build_config
+from sharegpt_utils import ShareGPTParser, build_config
 
 
 def _row(conversations, images=None, extra_info=None, **kwargs):

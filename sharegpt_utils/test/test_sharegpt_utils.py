@@ -4,15 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from xpoints.datasets.sharegpt_utils import (
+from sharegpt_utils import (
     ParsedSample,
     ShareGPTDatasetConfig,
     ShareGPTMessageDataset,
     ShareGPTParser,
     build_config,
 )
-from xpoints.datasets.sharegpt_utils import parser as parser_module
-from xpoints.datasets.sharegpt_utils.io import load_sharegpt_json
+from sharegpt_utils import parser as parser_module
+from sharegpt_utils.io import load_sharegpt_json
 
 
 class ShareGPTUtilsTest(unittest.TestCase):
@@ -175,7 +175,7 @@ class ShareGPTUtilsTest(unittest.TestCase):
             "conversations": [{"from": "human", "value": "hello"}],
         }
 
-        with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+        with self.assertLogs("sharegpt_utils.parser", level="WARNING") as logs:
             parsed = parser.parse_sample(raw_sample, 0)
 
         self.assertEqual(parsed.extra_info, {"index": 0})
@@ -193,14 +193,14 @@ class ShareGPTUtilsTest(unittest.TestCase):
             "conversations": [{"from": "human", "value": "hello"}],
         }
 
-        with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+        with self.assertLogs("sharegpt_utils.parser", level="WARNING") as logs:
             parser.parse_sample(raw_sample, 0)
         self.assertEqual(sum("Dropping unexpected top-level keys" in log for log in logs.output), 1)
 
-        with self.assertNoLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING"):
+        with self.assertNoLogs("sharegpt_utils.parser", level="WARNING"):
             parser.parse_sample({**raw_sample, "id": "sample-drop-2"}, 1)
 
-        with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+        with self.assertLogs("sharegpt_utils.parser", level="WARNING") as logs:
             parser.parse_sample({**raw_sample, "id": "sample-drop-3", "source": "sa1b"}, 2)
         self.assertTrue(any("agent_name" in log and "source" in log for log in logs.output))
 
@@ -218,7 +218,7 @@ class ShareGPTUtilsTest(unittest.TestCase):
             "conversations": [{"from": "human", "value": "hello"}],
         }
 
-        with self.assertNoLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING"):
+        with self.assertNoLogs("sharegpt_utils.parser", level="WARNING"):
             parsed = parser.parse_sample(raw_sample, 0)
 
         self.assertEqual(parsed.pass_through["stage_meta"], {"stage_id": "s1"})
@@ -344,7 +344,7 @@ class ShareGPTUtilsTest(unittest.TestCase):
                 "__sharegpt_source_file": str(tmp_path / "sample.jsonl"),
             }
 
-            with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+            with self.assertLogs("sharegpt_utils.parser", level="WARNING") as logs:
                 parsed = parser.parse_sample(raw_sample, 0)
 
             self.assertEqual(parsed.data_source, "sharegpt")
@@ -357,7 +357,7 @@ class ShareGPTUtilsTest(unittest.TestCase):
             "conversations": [{"from": "human", "value": "hello"}],
         }
 
-        with self.assertLogs("xpoints.datasets.sharegpt_utils.parser", level="WARNING") as logs:
+        with self.assertLogs("sharegpt_utils.parser", level="WARNING") as logs:
             parsed = parser.parse_sample(raw_sample, 0)
 
         self.assertEqual(parsed.data_source, "metric")
