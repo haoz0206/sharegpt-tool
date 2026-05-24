@@ -1,26 +1,20 @@
-from .sharegpt_utils import ShareGPTDatasetConfig, ShareGPTMessageDataset, ShareGPTParser, ShareGPTTagConfig, ParsedSample
-
-try:
-    from .rlvr_dataset import RLVRShareGPTDataset, build_config
-    from .agent_dataset import AgentShareGPTDataset
-except Exception:  # pragma: no cover - optional runtime dependency (verl/ray)
-    RLVRShareGPTDataset = None
-    AgentShareGPTDataset = None
-    build_config = None
+from .sharegpt_utils import (
+    ParsedSample,
+    ShareGPTDatasetConfig,
+    ShareGPTMessageDataset,
+    ShareGPTParser,
+    ShareGPTTagConfig,
+    build_config,
+)
+from .sliced_jsonl import SlicedJsonlPath, parse_sliced_jsonl_path
 
 __all__ = [
     "ShareGPTTagConfig",
     "ShareGPTDatasetConfig",
+    "build_config",
     "ShareGPTParser",
     "ShareGPTMessageDataset",
     "ParsedSample",
+    "SlicedJsonlPath",
+    "parse_sliced_jsonl_path",
 ]
-
-if build_config is not None and RLVRShareGPTDataset is not None:
-    __all__.extend(
-        [
-            "build_config",
-            "RLVRShareGPTDataset",
-            "AgentShareGPTDataset",
-        ]
-    )
