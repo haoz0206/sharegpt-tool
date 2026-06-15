@@ -16,9 +16,23 @@ import requests
 import torch
 import torchvision
 from packaging import version
-from PIL import Image
+from PIL import Image, ImageFile
 from torchvision import io, transforms
 from torchvision.transforms import InterpolationMode
+
+# Optional tolerance for slightly-truncated web-scale JPEG/PNG files (a few
+# trailing bytes missing). A vendored fork of this tool historically forced
+# this ON unconditionally; whether it should be the default is still PENDING —
+# the author of that change has not confirmed intent. Reflowed here as OPT-IN,
+# default OFF, so behavior is explicit. Enable with
+# SHAREGPT_LOAD_TRUNCATED_IMAGES=1 if a corpus has such files.
+#
+# Caveats: the env var is read ONCE at import, so it must be set BEFORE this
+# module is first imported. `ImageFile.LOAD_TRUNCATED_IMAGES` is PROCESS-GLOBAL
+# PIL state — enabling it affects every PIL decode in the host process, not
+# just this module.
+if os.environ.get("SHAREGPT_LOAD_TRUNCATED_IMAGES", "").strip().lower() in ("1", "true", "yes"):
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 MAX_RATIO = 200
 SPATIAL_MERGE_SIZE = 2

@@ -23,6 +23,15 @@ rtk /workspace/PointCycle/.venv/bin/python -m compileall -q .
 rtk git diff --check
 ```
 
+## Environment Variables
+
+- `SHAREGPT_LOAD_TRUNCATED_IMAGES` (default OFF): when set to `1`/`true`/`yes`,
+  `mm_utils` enables `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, tolerating web-scale
+  JPEG/PNG files with a few truncated trailing bytes instead of raising. Read
+  ONCE at import (set it before importing the package), and it flips a
+  PROCESS-GLOBAL PIL flag affecting all decoding in the host process. Whether
+  truncation tolerance should become the default is still pending.
+
 ## Docs
 
 - [PRD: ShareGPT Dataset Utils](prd-sharegpt-dataset-utils.md)
